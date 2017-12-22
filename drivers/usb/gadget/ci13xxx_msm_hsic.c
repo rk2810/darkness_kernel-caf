@@ -589,7 +589,7 @@ static int msm_hsic_pm_suspend(struct device *dev)
 	dev_dbg(dev, "MSM HSIC Peripheral PM suspend\n");
 
 	if (!atomic_read(&mhsic->in_lpm)) {
-		dev_err(dev, "Abort PM suspend!! (HSIC-USB is outside LPM)\n");
+		dev_dbg(dev, "Abort PM suspend!! (HSIC-USB is outside LPM)\n");
 		return -EBUSY;
 	}
 

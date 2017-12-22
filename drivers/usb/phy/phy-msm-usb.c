@@ -5179,7 +5179,7 @@ static int msm_otg_pm_suspend(struct device *dev)
 	/* flush any pending sm_work first */
 	flush_work(&motg->sm_work);
 	if (!atomic_read(&motg->in_lpm)) {
-		dev_err(dev, "Abort PM suspend!! (USB is outside LPM)\n");
+		dev_dbg(dev, "Abort PM suspend!! (USB is outside LPM)\n");
 		return -EBUSY;
 	}
 	atomic_set(&motg->pm_suspended, 1);
