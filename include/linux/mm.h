@@ -99,6 +99,8 @@ extern int overcommit_kbytes_handler(struct ctl_table *, int, void __user *,
 
 extern struct kmem_cache *vm_area_cachep;
 
+void drop_pagecache(void);
+
 #ifndef CONFIG_MMU
 extern struct rb_root nommu_region_tree;
 extern struct rw_semaphore nommu_region_sem;
