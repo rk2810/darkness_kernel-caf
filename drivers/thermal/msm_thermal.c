@@ -197,6 +197,8 @@ static LIST_HEAD(devices_list);
 static LIST_HEAD(thresholds_list);
 static int mitigation = 1;
 
+static void freq_mitigation_reinit(void);
+
 enum thermal_threshold {
 	HOTPLUG_THRESHOLD_HIGH,
 	HOTPLUG_THRESHOLD_LOW,
@@ -631,8 +633,10 @@ static void msm_thermal_update_freq(bool is_shutdown, bool mitigate)
 
 	if (freq_mitigation_task)
 		complete(&freq_mitigation_complete);
-	else
+	else {
 		pr_err("Freq mitigation task is not initialized\n");
+		freq_mitigation_reinit();
+	}
 notify_exit:
 	return;
 }
@@ -764,6 +768,7 @@ static int devmgr_client_cpufreq_update(struct device_manager_data *dev_mgr)
 		complete(&freq_mitigation_complete);
 	} else {
 		pr_err("Frequency mitigation task is not initialized\n");
+		freq_mitigation_reinit();
 		ret = -ESRCH;
 	}
 
@@ -1596,7 +1601,7 @@ static void do_cluster_freq_ctrl(long temp)
 			if (!(msm_thermal_info.bootup_freq_control_mask
 				& BIT(_cpu)))
 				continue;
-			pr_info("Limiting CPU%d max frequency to %u. Temp:%ld\n"
+			pr_debug("Limiting CPU%d max frequency to %u. Temp:%ld\n"
 				, _cpu
 				, cluster_ptr->freq_table[freq_idx].frequency
 				, temp);
@@ -2929,7 +2934,8 @@ static int __ref update_offline_cores(int val)
 
 	if (pend_hotplug_req && !in_suspend && !retry_in_progress) {
 		retry_in_progress = true;
-		schedule_delayed_work(&retry_hotplug_work,
+		queue_delayed_work(system_power_efficient_wq,
+			&retry_hotplug_work,
 			msecs_to_jiffies(HOTPLUG_RETRY_INTERVAL_MS));
 	}
 
@@ -3422,8 +3428,9 @@ static void check_temp(struct work_struct *work)
 
 reschedule:
 	if (polling_enabled)
-		schedule_delayed_work(&check_temp_work,
-				msecs_to_jiffies(msm_thermal_info.poll_ms));
+		queue_delayed_work(system_power_efficient_wq,
+			&check_temp_work,
+			msecs_to_jiffies(msm_thermal_info.poll_ms));
 }
 
 static int __ref msm_thermal_cpu_callback(struct notifier_block *nfb,
@@ -3771,6 +3778,14 @@ init_freq_thread:
 	}
 }
 
+static void freq_mitigation_reinit(void)
+{
+	pr_warn("Trying to reinitialize Frequency mitigation task...\n");
+	pr_warn("Dumping mitg parameters: %d , %d , %d .\n", msm_thermal_info.freq_mitig_temp_degc, msm_thermal_info.freq_mitig_temp_hysteresis_degc, msm_thermal_info.freq_limit);
+
+	freq_mitigation_init();
+}
+
 int msm_thermal_get_freq_plan_size(uint32_t cluster, unsigned int *table_len)
 {
 	uint32_t i = 0;
@@ -3950,6 +3965,7 @@ int msm_thermal_set_cluster_freq(uint32_t cluster, uint32_t freq, bool is_max)
 			complete(&freq_mitigation_complete);
 	} else {
 		pr_err("Frequency mitigation task is not initialized\n");
+		freq_mitigation_reinit();
 		return -ESRCH;
 	}
 
@@ -3990,6 +4006,7 @@ int msm_thermal_set_frequency(uint32_t cpu, uint32_t freq, bool is_max)
 	} else {
 		pr_err("Frequency mitigation task is not initialized\n");
 		ret = -ESRCH;
+		freq_mitigation_reinit();
 		goto set_freq_exit;
 	}
 
@@ -5633,8 +5650,10 @@ static void thermal_cpu_freq_mit_disable(void)
 	}
 	if (freq_mitigation_task)
 		complete(&freq_mitigation_complete);
-	else
+	else {
 		pr_err("Freq mit task is not initialized\n");
+		freq_mitigation_reinit();
+	}
 }
 
 static void thermal_cpu_hotplug_mit_disable(void)

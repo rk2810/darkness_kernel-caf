@@ -2339,7 +2339,7 @@ static void mdss_mdp_ctl_perf_update(struct mdss_mdp_ctl *ctl,
 	if (update_clk) {
 		ATRACE_INT("mdp_clk", clk_rate);
 		mdss_mdp_set_clk_rate(clk_rate);
-		pr_debug("update clk rate = %d HZ\n", clk_rate);
+		pr_debug("update clk rate = %d msecs_to_jiffies(1000)\n", clk_rate);
 	}
 
 end:
@@ -5253,6 +5253,8 @@ int mdss_mdp_ctl_update_fps(struct mdss_mdp_ctl *ctl)
 		ret = 0;
 		goto exit;
 	}
+
+	mdss_mdp_ctl_perf_update(ctl, 1, false);
 
 	ret = ctl->ops.config_fps_fnc(ctl, new_fps);
 	if (!ret)

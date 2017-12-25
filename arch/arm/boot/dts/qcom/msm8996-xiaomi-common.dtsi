@@ -933,7 +933,7 @@
 	status = "disabled";
 	qcom,wave-play-rate-us = <4166>;
 	qcom,wave-shape = "sine";
-	qcom,vmax-mv = <2200>;
+	qcom,vmax-mv = <1628>;
 	qcom,brake-pattern = [03 03 02 02];
 };
 

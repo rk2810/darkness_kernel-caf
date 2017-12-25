@@ -42,6 +42,10 @@
 #include "pmic-voter.h"
 #include <linux/fb.h>
 
+#ifdef CONFIG_FORCE_FAST_CHARGE
+#include <linux/fastchg.h>
+#endif
+
 #if defined(CONFIG_FB)
 static int fb_notifier_callback(struct notifier_block *self,
 				unsigned long event, void *data);
@@ -491,21 +495,8 @@ module_param_named(
 	int, S_IRUSR | S_IWUSR
 );
 
-#define pr_smb(reason, fmt, ...)				\
-	do {							\
-		if (smbchg_debug_mask & (reason))		\
-			pr_info_ratelimited(fmt, ##__VA_ARGS__);		\
-		else						\
-			pr_debug_ratelimited(fmt, ##__VA_ARGS__);		\
-	} while (0)
-
-#define pr_smb_rt(reason, fmt, ...)					\
-	do {								\
-		if (smbchg_debug_mask & (reason))			\
-			pr_info_ratelimited(fmt, ##__VA_ARGS__);	\
-		else							\
-			pr_debug_ratelimited(fmt, ##__VA_ARGS__);	\
-	} while (0)
+#define pr_smb(reason, fmt, ...)
+#define pr_smb_rt(reason, fmt, ...)
 
 static int smbchg_read(struct smbchg_chip *chip, u8 *val,
 			u16 addr, int count)
@@ -1816,7 +1807,7 @@ static int smbchg_set_usb_current_max(struct smbchg_chip *chip,
 			}
 			chip->usb_max_current_ma = 150;
 		}
-		if (current_ma == CURRENT_500_MA) {
+		else if (current_ma == CURRENT_500_MA) {
 			rc = smbchg_sec_masked_write(chip,
 					chip->usb_chgpth_base + CHGPTH_CFG,
 					CFG_USB_2_3_SEL_BIT, CFG_USB_2);
@@ -1834,7 +1825,11 @@ static int smbchg_set_usb_current_max(struct smbchg_chip *chip,
 			}
 			chip->usb_max_current_ma = 500;
 		}
+#ifdef CONFIG_FORCE_FAST_CHARGE
+		if ((force_fast_charge > 0 && current_ma == CURRENT_500_MA) || current_ma == CURRENT_900_MA) {
+#else
 		if (current_ma == CURRENT_900_MA) {
+#endif
 			rc = smbchg_sec_masked_write(chip,
 					chip->usb_chgpth_base + CHGPTH_CFG,
 					CFG_USB_2_3_SEL_BIT, CFG_USB_3);
@@ -3571,6 +3566,11 @@ static int smbchg_icl_loop_disable_check(struct smbchg_chip *chip)
 
 #define UNKNOWN_BATT_TYPE	"Unknown Battery"
 #define LOADING_BATT_TYPE	"Loading Battery Data"
+
+// Default current value
+static int fast_charge_max_ma = 2400;
+module_param(fast_charge_max_ma, int, 0644);
+
 static int smbchg_config_chg_battery_type(struct smbchg_chip *chip)
 {
 	int rc = 0, max_voltage_uv = 0, fastchg_ma = 0, ret = 0, iterm_ua = 0;
@@ -3655,26 +3655,37 @@ static int smbchg_config_chg_battery_type(struct smbchg_chip *chip)
 	 * Only configure from profile if fastchg-ma is not defined in the
 	 * charger device node.
 	 */
-	if (!of_find_property(chip->spmi->dev.of_node,
+	/*if (!of_find_property(chip->spmi->dev.of_node,
 				"qcom,fastchg-current-ma", NULL)) {
 		rc = of_property_read_u32(profile_node,
 				"qcom,fastchg-current-ma", &fastchg_ma);
 		if (rc) {
 			ret = rc;
-		} else {
-			pr_smb(PR_MISC,
-				"fastchg-ma changed from to %dma for battery-type %s\n",
-				fastchg_ma, chip->battery_type);
-			rc = vote(chip->fcc_votable, BATT_TYPE_FCC_VOTER, true,
-							fastchg_ma);
-			if (rc < 0) {
-				dev_err(chip->dev,
-					"Couldn't vote for fastchg current rc=%d\n",
-					rc);
-				return rc;
-			}
-		}
+		} else {*/
+
+	if(fast_charge_max_ma > 3000)
+		fast_charge_max_ma = 3000;
+	else if(fast_charge_max_ma < 900)
+		fast_charge_max_ma = 900;
+
+	if(fast_charge_max_ma > 3000)
+		pr_warning("Beware, charging current too high!");
+
+	fastchg_ma = fast_charge_max_ma;
+
+	pr_smb(PR_MISC,
+		"fastchg-ma changed from to %dma for battery-type %s\n",
+		fastchg_ma, chip->battery_type);
+	rc = vote(chip->fcc_votable, BATT_TYPE_FCC_VOTER, true,
+					fastchg_ma);
+	if (rc < 0) {
+		dev_err(chip->dev,
+			"Couldn't vote for fastchg current rc=%d\n",
+			rc);
+		return rc;
 	}
+		/*}
+	}*/
 
 	return ret;
 }

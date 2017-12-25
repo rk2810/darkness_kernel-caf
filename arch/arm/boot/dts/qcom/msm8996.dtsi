@@ -2862,7 +2862,7 @@
 		qcom,sensor-id = <11>;
 		qcom,poll-ms = <100>;
 		qcom,limit-temp = <70>;
-		qcom,temp-hysteresis = <10>;
+		qcom,temp-hysteresis = <100>;
 		qcom,therm-reset-temp = <115>;
 		qcom,freq-step = <4>;
 		qcom,core-limit-temp = <90>;
@@ -2915,7 +2915,7 @@
 			qcom,mitigation-freq-khz = <729600>;
 			qcom,vph-high-threshold-uv = <3500000>;
 			qcom,vph-low-threshold-uv = <3300000>;
-			qcom,soc-low-threshold = <10>;
+			qcom,soc-low-threshold = <1>;
 			qcom,thermal-handle = <&msm_thermal_freq>;
 		};
 	};
@@ -2948,8 +2948,8 @@
 	qcom,msm-core@70000 {
 		compatible = "qcom,apss-core-ea";
 		reg = <0x70000 0x1000>;
-		qcom,low-hyst-temp = <10>;
-		qcom,high-hyst-temp = <5>;
+		qcom,low-hyst-temp = <100>;
+		qcom,high-hyst-temp = <100>;
 		qcom,polling-interval = <100>;
 
 		ea0: ea0 {

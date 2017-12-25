@@ -79,6 +79,12 @@
 #define BLANK_FLAG_ULP	FB_BLANK_NORMAL
 #endif
 
+#define MDSS_BRIGHT_TO_BL_DIM(out, v) do {\
+			out = (12*v*v+1393*v+3060)/4465;\
+			} while (0)
+bool backlight_dimmer = false;
+module_param(backlight_dimmer, bool, 0755);
+
 static struct fb_info *fbi_list[MAX_FBI_LIST];
 static int fbi_list_index;
 static struct msm_fb_data_type *mfd_data;
@@ -276,10 +282,14 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 	if (value > mfd->panel_info->brightness_max)
 		value = mfd->panel_info->brightness_max;
 
-	/* This maps android backlight level 0 to 255 into
-	   driver backlight level 0 to bl_max with rounding */
-	MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
-				mfd->panel_info->brightness_max);
+	if (backlight_dimmer) {
+		MDSS_BRIGHT_TO_BL_DIM(bl_lvl, value);
+	} else {
+		/* This maps android backlight level 0 to 255 into
+		   driver backlight level 0 to bl_max with rounding */
+		MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
+					mfd->panel_info->brightness_max);
+	}
 
 	if (!bl_lvl && value)
 		bl_lvl = 1;
@@ -1637,7 +1647,8 @@ void mdss_fb_update_backlight(struct msm_fb_data_type *mfd)
 
 static int mdss_fb_start_disp_thread(struct msm_fb_data_type *mfd)
 {
-	int ret = 0;
+	const unsigned long allowed_cpus = 0x3;
+	int ret;
 
 	pr_debug("%pS: start display thread fb%d\n",
 		__builtin_return_address(0), mfd->index);
@@ -1646,17 +1657,24 @@ static int mdss_fb_start_disp_thread(struct msm_fb_data_type *mfd)
 	mdss_fb_get_split(mfd);
 
 	atomic_set(&mfd->commits_pending, 0);
-	mfd->disp_thread = kthread_run(__mdss_fb_display_thread,
+	mfd->disp_thread = kthread_create(__mdss_fb_display_thread,
 				mfd, "mdss_fb%d", mfd->index);
 
 	if (IS_ERR(mfd->disp_thread)) {
-		pr_err("ERROR: unable to start display thread %d\n",
+		pr_err("ERROR: unable to create display thread %d\n",
 				mfd->index);
 		ret = PTR_ERR(mfd->disp_thread);
 		mfd->disp_thread = NULL;
+		return ret;
 	}
 
-	return ret;
+	/* Restrict the display thread to the power cluster to save power */
+	do_set_cpus_allowed(mfd->disp_thread, to_cpumask(&allowed_cpus));
+	mfd->disp_thread->flags |= PF_NO_SETAFFINITY;
+
+	wake_up_process(mfd->disp_thread);
+
+	return 0;
 }
 
 static void mdss_fb_stop_disp_thread(struct msm_fb_data_type *mfd)
@@ -3582,9 +3600,14 @@ static int __mdss_fb_display_thread(void *data)
 				mfd->index);
 
 	while (1) {
-		wait_event(mfd->commit_wait_q,
+		ret = wait_event_interruptible(mfd->commit_wait_q,
 				(atomic_read(&mfd->commits_pending) ||
 				 kthread_should_stop()));
+
+		if (ret) {
+			pr_info("%s: interrupted", __func__);
+			continue;
+		}
 
 		if (kthread_should_stop())
 			break;
